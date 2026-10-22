@@ -1,5 +1,7 @@
 # pinhole
 
+**Retired (2026-10-22).** pinhole has been replaced by [gentl](https://github.com/magland/gentl), a readability test for codebases built on the same idea (a memoryless agent with notes, reading effort counted in tokens), with an evaluator and friction reports, a Docker sandbox, task suites, repeated runs and a hub at https://gentl-hub.jeremy-magland.workers.dev. The pinhole web app is no longer deployed, and this repository is archived.
+
 Estimates the complexity of a task by the number of tokens an agent must read to accomplish it. The agent has no memory between turns: each turn it sees only the task, its own notes from the previous turn, and the result of its last action. It then writes new notes and picks the next action (`run`, `write_file`, `edit_file`, `finish`). Tokens read (notes plus action results) serve as a proxy for human reading effort; the minimum over models, prompts and seeds estimates the task's complexity.
 
 Tasks, runs and results are at https://pinhole.jeremy-magland.workers.dev.
