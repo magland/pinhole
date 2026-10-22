@@ -103,7 +103,7 @@ async function getRun(id: number, env: Env): Promise<Response> {
 	const run = await env.DB.prepare(`SELECT ${LIST_COLUMNS}, system_prompt FROM runs WHERE id = ?`).bind(id).first();
 	if (!run) return error("not found", 404);
 	const { results } = await env.DB.prepare("SELECT * FROM turns WHERE run_id = ? ORDER BY turn").bind(id).all();
-	return json({ ...run, turns: results });
+	return json({ run, turns: results });
 }
 
 export default {
