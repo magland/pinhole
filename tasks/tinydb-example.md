@@ -1,0 +1,1 @@
+Install the Python package `tinydb`. Using its documentation, write a script `/work/example.py` that creates a database, inserts three records, and queries one of them by a field value. Run the script and confirm the query returns the expected record.
