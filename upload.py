@@ -27,6 +27,18 @@ def env_value(name: str) -> str | None:
     return None
 
 
+def site_url() -> str:
+    return (env_value("PINHOLE_URL") or DEFAULT_URL).rstrip("/")
+
+
+def fetch_task(task_id: int) -> str:
+    """Fetch a task's text from the web app."""
+    r = httpx.get(f"{site_url()}/api/tasks/{task_id}", timeout=60)
+    if r.status_code != 200:
+        raise SystemExit(f"could not fetch task {task_id}: HTTP {r.status_code} {r.text}")
+    return r.json()["task"]["text"]
+
+
 def build_payload(run_dir: Path, user: str | None) -> dict:
     summary = json.loads((run_dir / "summary.json").read_text())
     user = user or summary.get("user")
@@ -54,7 +66,7 @@ def upload_run(run_dir: Path, user: str | None = None) -> str:
     passcode = env_value("PINHOLE_PASSCODE")
     if not passcode:
         raise SystemExit("PINHOLE_PASSCODE not set (environment or .env)")
-    url = (env_value("PINHOLE_URL") or DEFAULT_URL).rstrip("/")
+    url = site_url()
     r = httpx.post(f"{url}/api/runs", json=build_payload(run_dir, user),
                    headers={"Authorization": f"Bearer {passcode}"}, timeout=120)
     if r.status_code != 201:

@@ -13,7 +13,7 @@ echo PINHOLE_PASSCODE=... >> .env   # only needed to upload
 ## Run
 
 ```
-uv run pinhole.py (tasks/tinydb-example.md | --task "...") [--model anthropic/claude-haiku-5.5] [--max-turns 40] [--user NAME --upload]
+uv run pinhole.py (tasks/tinydb-example.md | --task "..." | --task-id N) [--model anthropic/claude-haiku-5.5] [--max-turns 40] [--user NAME --upload]
 ```
 
 The run is printed to the console as it goes and written to `runs/<id>/`:
@@ -29,6 +29,6 @@ Success is self-reported by the agent; verification by a stronger model is a sep
 
 ## Web app
 
-https://pinhole.jeremy-magland.workers.dev shows uploaded runs. Viewing is public; uploading needs the shared passcode (`PINHOLE_PASSCODE`). Upload with `--upload` on a run, or afterwards with `uv run upload.py runs/<id> --user NAME`.
+https://pinhole.jeremy-magland.workers.dev lists tasks, each with its runs and the fewest read tokens among self-reported successes. Tasks are created on the site (passcode required); a task's page shows the command to run it (`--task-id N --user NAME --upload`), which fetches the task text from the site. Runs from a task file or `--task` can be uploaded too and appear under All runs as ad hoc. Viewing is public; uploading needs the shared passcode (`PINHOLE_PASSCODE`). Upload with `--upload` on a run, or afterwards with `uv run upload.py runs/<id> --user NAME`.
 
 The app is a Cloudflare Worker with a D1 database, in `web/` (`npm run dev`, `npm run deploy`; schema in `web/migrations/`).

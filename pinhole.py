@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 import tiktoken
 
-from upload import env_value, upload_run
+from upload import env_value, fetch_task, upload_run
 
 ROOT = Path(__file__).parent
 HARNESS_VERSION = "0.1.0"
@@ -198,14 +198,20 @@ def main():
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("task_file", nargs="?", help="markdown file with the task")
     src.add_argument("--task", help="task text given directly")
+    src.add_argument("--task-id", type=int, help="id of a task on the web app")
     ap.add_argument("--model", default="anthropic/claude-haiku-5.5")
     ap.add_argument("--max-turns", type=int, default=40)
     ap.add_argument("--user", help="your name, recorded with the run")
     ap.add_argument("--upload", action="store_true", help="upload the run to the web app when done")
     args = ap.parse_args()
 
-    task = (args.task if args.task is not None else Path(args.task_file).read_text()).strip()
-    name = Path(args.task_file).stem if args.task_file else "-".join(re.findall(r"[a-z0-9]+", task.lower())[:5])
+    if args.task_id is not None:
+        task, name = fetch_task(args.task_id).strip(), f"task{args.task_id}"
+    elif args.task is not None:
+        task = args.task.strip()
+        name = "-".join(re.findall(r"[a-z0-9]+", task.lower())[:5])
+    else:
+        task, name = Path(args.task_file).read_text().strip(), Path(args.task_file).stem
     key = load_key()
     if args.upload and not args.user:
         raise SystemExit("--upload requires --user")
@@ -225,11 +231,11 @@ def main():
         transcript.flush()
         print(text, flush=True)
 
-    out(f"# pinhole run {run_id}\n\n- Model: {args.model}\n- Task file: {args.task_file or '(given on command line)'}\n- Started: "
+    out(f"# pinhole run {run_id}\n\n- Model: {args.model}\n- Task: {f'#{args.task_id} on the web app' if args.task_id is not None else args.task_file or 'given on command line'}\n- Started: "
         f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n\n## Task\n\n{task}\n")
     transcript.write(f"## System prompt\n\n{fence(SYSTEM_PROMPT)}\n")
 
-    s = {"run_id": run_id, "task_file": args.task_file, "task": task, "model": args.model, "user": args.user,
+    s = {"run_id": run_id, "task_file": args.task_file, "task_id": args.task_id, "task": task, "model": args.model, "user": args.user,
          "harness_version": HARNESS_VERSION, "system_prompt": SYSTEM_PROMPT,
          "overhead_tokens": ntok(SYSTEM_PROMPT) + ntok(task),
          "turns": 0, "notes_tokens_total": 0, "notes_tokens_max": 0,
