@@ -7,12 +7,13 @@ Estimates the complexity of a task by the number of tokens an agent must read to
 ```
 docker build -t pinhole-sandbox sandbox
 echo OPENROUTER_API_KEY=... > .env
+echo PINHOLE_PASSCODE=... >> .env   # only needed to upload
 ```
 
 ## Run
 
 ```
-uv run pinhole.py (tasks/tinydb-example.md | --task "...") [--model anthropic/claude-haiku-5.5] [--max-turns 40]
+uv run pinhole.py (tasks/tinydb-example.md | --task "...") [--model anthropic/claude-haiku-5.5] [--max-turns 40] [--user NAME --upload]
 ```
 
 The run is printed to the console as it goes and written to `runs/<id>/`:
@@ -25,3 +26,9 @@ The run is printed to the console as it goes and written to `runs/<id>/`:
 Tokens are counted with tiktoken `o200k_base` on the text the agent sees, so counts are comparable across models. `overhead_tokens` (system prompt plus task) is counted once. `read_tokens_total` = `notes_tokens_total` + `result_tokens_total`; command output beyond 8000 chars is truncated and only the shown part counts.
 
 Success is self-reported by the agent; verification by a stronger model is a separate, later step.
+
+## Web app
+
+https://pinhole.jeremy-magland.workers.dev shows uploaded runs. Viewing is public; uploading needs the shared passcode (`PINHOLE_PASSCODE`). Upload with `--upload` on a run, or afterwards with `uv run upload.py runs/<id> --user NAME`.
+
+The app is a Cloudflare Worker with a D1 database, in `web/` (`npm run dev`, `npm run deploy`; schema in `web/migrations/`).

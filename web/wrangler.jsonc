@@ -1,0 +1,19 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "pinhole",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-10-21",
+	"observability": { "enabled": true },
+	"assets": {
+		"directory": "./public",
+		"run_worker_first": ["/api/*"]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "pinhole-db",
+			"database_id": "607221c3-cc52-442d-86b0-4ff32ab59028",
+			"migrations_dir": "migrations"
+		}
+	]
+}

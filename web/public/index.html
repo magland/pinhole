@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pinhole</title>
+<style>
+:root {
+	--bg: #fbfbfa; --fg: #1d1d1b; --muted: #6b6b66; --line: #e3e2de; --row: #f2f1ee;
+	--ok: #2f7d4f; --bad: #b4452f; --warn: #9a7a1d;
+	color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+	:root { --bg: #171716; --fg: #e8e7e3; --muted: #9a9993; --line: #2e2d2b; --row: #201f1e;
+		--ok: #6cc08f; --bad: #e58670; --warn: #d6b45a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+	font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.lede { color: var(--muted); margin: 0 0 28px; max-width: 70ch; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
+	white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--row); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+th.num { text-align: right; }
+td.task { min-width: 260px; max-width: 420px; }
+.nowrap { white-space: nowrap; }
+.ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+.muted { color: var(--muted); }
+.empty { padding: 24px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+	<h1>pinhole</h1>
+	<p class="lede">Each run is an agent with no memory between turns: it sees only the task, its own notes and the result of its last action. Read tokens (notes plus results) estimate the reading effort a task requires. Success is self-reported by the agent.</p>
+	<div class="table-wrap">
+		<table>
+			<thead><tr>
+				<th>#</th><th>Uploaded</th><th>User</th><th>Task</th><th>Model</th><th>Outcome</th>
+				<th class="num">Turns</th><th class="num">Read tokens</th><th class="num">Max notes</th>
+				<th class="num">Max result</th><th class="num">Cost</th>
+			</tr></thead>
+			<tbody id="runs"><tr><td colspan="11" class="empty">Loading...</td></tr></tbody>
+		</table>
+	</div>
+</main>
+<script>
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const n = (x) => Number(x).toLocaleString();
+
+function outcome(r) {
+	if (!r.finished) return '<span class="warn">did not finish</span>';
+	return r.self_reported_success ? '<span class="ok">success</span>' : '<span class="bad">gave up</span>';
+}
+
+async function load() {
+	const tbody = document.getElementById("runs");
+	try {
+		const res = await fetch("/api/runs");
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		const runs = await res.json();
+		if (!runs.length) { tbody.innerHTML = '<tr><td colspan="11" class="empty">No runs uploaded yet.</td></tr>'; return; }
+		tbody.innerHTML = runs.map((r) => `<tr>
+			<td class="muted">${r.id}</td>
+			<td class="nowrap">${esc(r.uploaded_at.slice(0, 16).replace("T", " "))}</td>
+			<td>${esc(r.user)}</td>
+			<td class="task">${esc(r.task)}</td>
+			<td class="nowrap">${esc(r.model)}</td>
+			<td class="nowrap">${outcome(r)}</td>
+			<td class="num">${r.turns}</td>
+			<td class="num"><strong>${n(r.read_tokens_total)}</strong></td>
+			<td class="num">${n(r.notes_tokens_max)}</td>
+			<td class="num">${n(r.result_tokens_max)}</td>
+			<td class="num">$${Number(r.cost_usd).toFixed(4)}</td>
+		</tr>`).join("");
+	} catch (e) {
+		tbody.innerHTML = `<tr><td colspan="11" class="empty">Failed to load runs: ${esc(e.message)}</td></tr>`;
+	}
+}
+load();
+</script>
+</body>
+</html>

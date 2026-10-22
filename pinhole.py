@@ -6,7 +6,6 @@
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import time
@@ -15,7 +14,10 @@ from pathlib import Path
 import httpx
 import tiktoken
 
+from upload import env_value, upload_run
+
 ROOT = Path(__file__).parent
+HARNESS_VERSION = "0.1.0"
 IMAGE = "pinhole-sandbox"
 OUTPUT_CAP = 8000  # chars of command output shown to the agent
 CMD_TIMEOUT = 300  # seconds
@@ -126,13 +128,8 @@ def describe_action(a: dict) -> str:
 # ---------- model ----------
 
 def load_key() -> str:
-    if k := os.environ.get("OPENROUTER_API_KEY"):
+    if k := env_value("OPENROUTER_API_KEY"):
         return k
-    env = ROOT / ".env"
-    if env.exists():
-        for line in env.read_text().splitlines():
-            if line.startswith("OPENROUTER_API_KEY="):
-                return line.split("=", 1)[1].strip().strip('"')
     raise SystemExit("OPENROUTER_API_KEY not set (environment or .env)")
 
 
@@ -203,11 +200,15 @@ def main():
     src.add_argument("--task", help="task text given directly")
     ap.add_argument("--model", default="anthropic/claude-haiku-5.5")
     ap.add_argument("--max-turns", type=int, default=40)
+    ap.add_argument("--user", help="your name, recorded with the run")
+    ap.add_argument("--upload", action="store_true", help="upload the run to the web app when done")
     args = ap.parse_args()
 
     task = (args.task if args.task is not None else Path(args.task_file).read_text()).strip()
     name = Path(args.task_file).stem if args.task_file else "-".join(re.findall(r"[a-z0-9]+", task.lower())[:5])
     key = load_key()
+    if args.upload and not args.user:
+        raise SystemExit("--upload requires --user")
     run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + name
     run_dir = ROOT / "runs" / run_id
     run_dir.mkdir(parents=True)
@@ -228,7 +229,8 @@ def main():
         f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n\n## Task\n\n{task}\n")
     transcript.write(f"## System prompt\n\n{fence(SYSTEM_PROMPT)}\n")
 
-    s = {"run_id": run_id, "task_file": args.task_file, "task": task, "model": args.model,
+    s = {"run_id": run_id, "task_file": args.task_file, "task": task, "model": args.model, "user": args.user,
+         "harness_version": HARNESS_VERSION, "system_prompt": SYSTEM_PROMPT,
          "overhead_tokens": ntok(SYSTEM_PROMPT) + ntok(task),
          "turns": 0, "notes_tokens_total": 0, "notes_tokens_max": 0,
          "result_tokens_total": 0, "result_tokens_max": 0,
@@ -300,6 +302,8 @@ def main():
         log.close()
         transcript.close()
     print(f"Run directory: {run_dir}")
+    if args.upload:
+        print(f"Uploaded: {upload_run(run_dir)}")
 
 
 if __name__ == "__main__":
