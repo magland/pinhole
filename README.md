@@ -21,7 +21,7 @@ The first run builds the sandbox image (`pinhole-sandbox:<hash>`) from the bundl
 uvx --from git+https://github.com/magland/pinhole pinhole run --task-id N --user NAME --upload
 ```
 
-The task can also come from a file or the command line: `pinhole run (TASK_FILE | --task "..." | --task-id N)`. Other options: `--model` (default `anthropic/claude-haiku-5.5`), `--max-turns` (default 40), `--llm auto|openrouter|site`. Upload an earlier run with `pinhole upload runs/<id> --user NAME`. To pick up a newer version, add `--refresh` after `uvx`. For development, `uv run pinhole run ...` in a clone.
+The task can also come from a file or the command line: `pinhole run (TASK_FILE | --task "..." | --task-id N)`. Other options: `--model` (default `anthropic/claude-haiku-5.5`), `--max-turns` (default 40), `--llm auto|openrouter|site`. Upload an earlier run with `pinhole upload runs/<id> --user NAME`. For development, `uv run pinhole run ...` in a clone.
 
 The run is printed to the console as it goes and written to `./runs/<id>/`:
 
