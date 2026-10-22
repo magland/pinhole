@@ -36,7 +36,7 @@ Success is self-reported by the agent; verification by a stronger model is a sep
 
 ## Web app
 
-https://pinhole.jeremy-magland.workers.dev lists tasks, each with its runs and the fewest read tokens among self-reported successes. Tasks are created on the site (passcode required); a task's page shows the command to run it (`--task-id N --user NAME --upload`), which fetches the task text from the site. Runs from a task file or `--task` can be uploaded too and appear under All runs as ad hoc. Viewing is public; uploading needs the shared passcode (`PINHOLE_PASSCODE`). Upload with `--upload` on a run, or afterwards with `pinhole upload`.
+https://pinhole.jeremy-magland.workers.dev lists tasks, each with its runs and the fewest read tokens among self-reported successes. Tasks are created on the site (passcode required); a task's page shows the command to run it (`--task-id N --user NAME --upload`), which fetches the task text from the site. Runs from a task file or `--task` can be uploaded too and appear under All runs as ad hoc. Viewing is public; uploading, creating tasks and deleting need the shared passcode (`PINHOLE_PASSCODE`). Deleting a task also deletes its runs. Upload with `--upload` on a run, or afterwards with `pinhole upload`.
 
 The app is a Cloudflare Worker with a D1 database, in `web/` (`npm run dev`, `npm run deploy`; schema in `web/migrations/`).
 

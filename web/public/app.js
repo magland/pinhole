@@ -136,7 +136,7 @@ async function showTask(id) {
 		return;
 	}
 	app.innerHTML = `${nav("tasks")}
-		<h1>Task ${task.id}</h1>
+		<div class="title-row"><h1>Task ${task.id}</h1>${deleteControl("Delete task")}</div>
 		<div class="meta"><span>Created by <b>${esc(task.created_by)}</b></span><span>Created <b>${date(task.created_at)}</b></span></div>
 		<p class="task-text">${esc(task.text)}</p>
 		<div class="stats">
@@ -165,6 +165,9 @@ async function showTask(id) {
 	});
 	bindRowLinks(app);
 	showModels();
+	bindDelete(`/api/tasks/${task.id}`,
+		`Delete task ${task.id}${task.run_count ? ` and its ${task.run_count} run${task.run_count === 1 ? "" : "s"}` : ""}? This cannot be undone.`,
+		"/");
 }
 
 async function showModels() {
@@ -177,6 +180,47 @@ async function showModels() {
 	} catch {
 		el.textContent = "";
 	}
+}
+
+// ---------- delete ----------
+
+function deleteControl(label) {
+	return `<div class="delete">
+		<button type="button" class="secondary" id="del-open">${label}</button>
+		<div class="confirm" id="del-confirm" hidden>
+			<p id="del-text"></p>
+			<div class="row">
+				<input type="password" id="del-pass" placeholder="Passcode" value="${esc(store.get("pinhole-passcode"))}">
+				<button type="button" class="danger" id="del-go">Delete</button>
+				<button type="button" class="secondary" id="del-cancel">Cancel</button>
+			</div>
+			<p class="form-msg" id="del-msg"></p>
+		</div>
+	</div>`;
+}
+
+function bindDelete(apiUrl, question, afterPath) {
+	const box = document.getElementById("del-confirm");
+	const open = document.getElementById("del-open");
+	const msg = document.getElementById("del-msg");
+	document.getElementById("del-text").textContent = question;
+	open.addEventListener("click", () => { box.hidden = false; open.hidden = true; document.getElementById("del-pass").focus(); });
+	document.getElementById("del-cancel").addEventListener("click", () => { box.hidden = true; open.hidden = false; msg.textContent = ""; });
+	document.getElementById("del-go").addEventListener("click", async () => {
+		const passcode = document.getElementById("del-pass").value;
+		msg.textContent = "Deleting...";
+		msg.className = "form-msg";
+		try {
+			const res = await fetch(apiUrl, { method: "DELETE", headers: { authorization: `Bearer ${passcode}` } });
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+			store.set("pinhole-passcode", passcode);
+			navigate(afterPath);
+		} catch (err) {
+			msg.textContent = `Could not delete: ${err.message}`;
+			msg.className = "form-msg bad";
+		}
+	});
 }
 
 const shellQuote = (s) => (/^[\w.@-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
@@ -246,7 +290,7 @@ async function showRun(id) {
 	app.innerHTML = `
 		${nav(r.task_id != null ? "" : "runs")}
 		${r.task_id != null ? `<div class="crumb"><a href="/tasks/${r.task_id}" data-nav>Task ${r.task_id}</a> / run ${r.id}</div>` : ""}
-		<h1>Run ${r.id}</h1>
+		<div class="title-row"><h1>Run ${r.id}</h1>${deleteControl("Delete run")}</div>
 		<div class="meta">
 			<span>User <b>${esc(r.user)}</b></span>
 			<span>Model <b>${esc(r.model)}</b></span>
@@ -264,6 +308,7 @@ async function showRun(id) {
 		<h2>Turns</h2>
 		${turns.map((t, i) => turnCard(t, turns[i + 1], cumulative(turns, i))).join("")}`;
 	bindChart(turns);
+	bindDelete(`/api/runs/${r.id}`, `Delete run ${r.id}? This cannot be undone.`, r.task_id != null ? `/tasks/${r.task_id}` : "/runs");
 	if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
 }
 

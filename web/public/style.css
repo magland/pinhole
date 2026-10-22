@@ -116,3 +116,16 @@ label.inline { font-size: 13px; color: var(--muted); display: inline-flex; gap: 
 .cmd { display: flex; gap: 8px; align-items: stretch; margin-top: 8px; }
 .cmd pre { flex: 1; margin: 0; }
 .cmd button { flex: none; }
+
+/* title row and delete */
+.title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.title-row h1 { margin: 0 0 4px; }
+.delete { display: flex; flex-direction: column; align-items: flex-end; max-width: 100%; }
+.delete .confirm { border: 1px solid var(--bad); border-radius: 8px; padding: 10px 12px; max-width: 420px; }
+.delete .confirm p { margin: 0 0 8px; font-size: 14px; }
+.delete .confirm .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.delete .confirm input { flex: 1; min-width: 120px; }
+.delete .confirm p.form-msg { margin: 6px 0 0; }
+button.secondary { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+button.secondary:hover { color: var(--fg); border-color: var(--muted); }
+button.danger { background: var(--bad); color: #fff; }

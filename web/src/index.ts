@@ -154,6 +154,31 @@ async function createTask(req: Request, env: Env): Promise<Response> {
 	return json({ id: row!.id }, 201);
 }
 
+async function deleteRun(req: Request, id: number, env: Env): Promise<Response> {
+	if (!(await passcodeOk(req, env))) return error("invalid passcode", 401);
+	const run = await env.DB.prepare("SELECT id FROM runs WHERE id = ?").bind(id).first();
+	if (!run) return error("not found", 404);
+	await env.DB.batch([
+		env.DB.prepare("DELETE FROM turns WHERE run_id = ?").bind(id),
+		env.DB.prepare("DELETE FROM runs WHERE id = ?").bind(id),
+	]);
+	return json({ deleted: { run: id } });
+}
+
+// Deletes a task together with its runs and their turns.
+async function deleteTask(req: Request, id: number, env: Env): Promise<Response> {
+	if (!(await passcodeOk(req, env))) return error("invalid passcode", 401);
+	const task = await env.DB.prepare("SELECT id FROM tasks WHERE id = ?").bind(id).first();
+	if (!task) return error("not found", 404);
+	const runs = await env.DB.prepare("SELECT COUNT(*) AS n FROM runs WHERE task_id = ?").bind(id).first<{ n: number }>();
+	await env.DB.batch([
+		env.DB.prepare("DELETE FROM turns WHERE run_id IN (SELECT id FROM runs WHERE task_id = ?)").bind(id),
+		env.DB.prepare("DELETE FROM runs WHERE task_id = ?").bind(id),
+		env.DB.prepare("DELETE FROM tasks WHERE id = ?").bind(id),
+	]);
+	return json({ deleted: { task: id, runs: runs?.n ?? 0 } });
+}
+
 // ---------- model proxy ----------
 
 const allowedModels = (env: Env) => String(env.ALLOWED_MODELS).split(",").map((m) => m.trim()).filter(Boolean);
@@ -229,10 +254,12 @@ export default {
 		if (path === "/api/runs" && req.method === "POST") return createRun(req, env);
 		const m = path.match(/^\/api\/runs\/(\d+)$/);
 		if (m && req.method === "GET") return getRun(Number(m[1]), env);
+		if (m && req.method === "DELETE") return deleteRun(req, Number(m[1]), env);
 		if (path === "/api/tasks" && req.method === "GET") return listTasks(env);
 		if (path === "/api/tasks" && req.method === "POST") return createTask(req, env);
 		const mt = path.match(/^\/api\/tasks\/(\d+)$/);
 		if (mt && req.method === "GET") return getTask(Number(mt[1]), env);
+		if (mt && req.method === "DELETE") return deleteTask(req, Number(mt[1]), env);
 		if (path === "/api/llm" && req.method === "POST") return proxyLlm(req, env);
 		if (path === "/api/usage" && req.method === "GET") return usageInfo(env);
 		return error("not found", 404);
