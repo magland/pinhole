@@ -15,8 +15,9 @@ echo OPENROUTER_API_KEY=... > .env
 uv run pinhole.py tasks/tinydb-example.md [--model anthropic/claude-haiku-5.5] [--max-turns 40]
 ```
 
-Each run writes `runs/<id>/`:
+The run is printed to the console as it goes and written to `runs/<id>/`:
 
+- `transcript.md`: the same text as the console. It has the task and system prompt, then for each turn the tokens read, the notes written, the action and the result shown to the agent, and a summary at the end. It is meant for a human or an LLM judge to read.
 - `events.jsonl`: per turn, the full model input and response, parsed notes and action, full and shown result, token counts, provider usage.
 - `summary.json`: totals (see below) and the agent's self-reported outcome.
 - `work.tar`: final contents of `/work` in the sandbox.
