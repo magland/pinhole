@@ -1,24 +1,21 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = ["httpx", "tiktoken"]
-# ///
 """Run a notes-only agent on a task in a Docker sandbox and count the tokens it reads."""
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
 import time
+from importlib import resources
 from pathlib import Path
 
 import httpx
 import tiktoken
 
-from upload import env_value, fetch_task, site_url, upload_run
+from . import __version__
+from .upload import env_value, fetch_task, site_url, upload_run
 
-ROOT = Path(__file__).parent
-HARNESS_VERSION = "0.1.0"
-IMAGE = "pinhole-sandbox"
+HARNESS_VERSION = __version__
 OUTPUT_CAP = 8000  # chars of command output shown to the agent
 CMD_TIMEOUT = 300  # seconds
 ENC = tiktoken.get_encoding("o200k_base")
@@ -39,6 +36,7 @@ You have no memory between turns. Each turn you see only:
 
 Each turn, respond with a single JSON object and nothing else:
 {"notes": "...", "action": {...}}
+You take exactly one action per turn; anything after the first JSON object is ignored.
 
 The notes are everything you will know on the next turn, so record what you have learned and what you plan to do next. Keep them short; they count toward tokens read on every turn.
 
@@ -52,10 +50,24 @@ Actions:
 
 # ---------- sandbox ----------
 
+def ensure_image() -> str:
+    """Build the sandbox image from the bundled Dockerfile if needed. The tag follows the Dockerfile's content."""
+    dockerfile = (resources.files("pinhole") / "sandbox" / "Dockerfile").read_bytes()
+    tag = "pinhole-sandbox:" + hashlib.sha256(dockerfile).hexdigest()[:12]
+    try:
+        present = subprocess.run(["docker", "image", "inspect", tag], capture_output=True).returncode == 0
+    except FileNotFoundError:
+        raise SystemExit("docker not found: pinhole runs each task in a Docker container")
+    if not present:
+        print(f"Building sandbox image {tag} (first run only)...", flush=True)
+        subprocess.run(["docker", "build", "-t", tag, "-"], input=dockerfile, check=True)
+    return tag
+
+
 class Sandbox:
-    def __init__(self, name: str):
+    def __init__(self, name: str, image: str):
         self.name = name
-        subprocess.run(["docker", "run", "-d", "--name", name, IMAGE, "sleep", "infinity"],
+        subprocess.run(["docker", "run", "-d", "--name", name, image, "sleep", "infinity"],
                        check=True, capture_output=True)
 
     def run(self, cmd: str) -> tuple[int, str]:
@@ -157,13 +169,16 @@ def call_model(ep: dict, model: str, system: str, user: str) -> tuple[str, dict]
 
 
 def parse_response(text: str) -> dict:
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m:
-        raise ValueError("no JSON object found")
-    d = json.loads(m.group(0))
-    if not isinstance(d.get("notes"), str) or not isinstance(d.get("action"), dict):
-        raise ValueError('expected {"notes": string, "action": object}')
-    return d
+    """Return the first JSON object of the form {"notes": str, "action": object}; anything after it is ignored."""
+    dec = json.JSONDecoder()
+    for m in re.finditer(r"\{", text):
+        try:
+            d, _ = dec.raw_decode(text, m.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(d, dict) and isinstance(d.get("notes"), str) and isinstance(d.get("action"), dict):
+            return d
+    raise ValueError('no JSON object of the form {"notes": string, "action": object} found')
 
 
 # ---------- transcript ----------
@@ -204,8 +219,8 @@ def format_summary(s: dict) -> str:
 
 # ---------- main loop ----------
 
-def main():
-    ap = argparse.ArgumentParser()
+def main(argv: list[str] | None = None):
+    ap = argparse.ArgumentParser(prog="pinhole run", description="Run the agent on a task.")
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("task_file", nargs="?", help="markdown file with the task")
     src.add_argument("--task", help="task text given directly")
@@ -217,7 +232,7 @@ def main():
     ap.add_argument("--llm", choices=["auto", "openrouter", "site"], default="auto",
                     help="model calls: your own OPENROUTER_API_KEY, or the site's shared key via PINHOLE_PASSCODE "
                          "(auto: your own key if set)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.task_id is not None:
         task, name = fetch_task(args.task_id).strip(), f"task{args.task_id}"
@@ -230,7 +245,7 @@ def main():
     if args.upload and not args.user:
         raise SystemExit("--upload requires --user")
     run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + name
-    run_dir = ROOT / "runs" / run_id
+    run_dir = Path.cwd() / "runs" / run_id
     run_dir.mkdir(parents=True)
     log = open(run_dir / "events.jsonl", "w")
     transcript = open(run_dir / "transcript.md", "w")
@@ -259,7 +274,7 @@ def main():
          "cost_usd": 0.0, "parse_errors": 0, "finished": False, "self_reported_success": None,
          "self_report_reason": None}
 
-    sb = Sandbox("pinhole-" + run_id.lower())
+    sb = Sandbox("pinhole-" + run_id.lower(), ensure_image())
     notes, last = "(none yet)", None  # last = (action description, shown result)
     try:
         for turn in range(1, args.max_turns + 1):
@@ -326,6 +341,3 @@ def main():
     if args.upload:
         print(f"Uploaded: {upload_run(run_dir)}")
 
-
-if __name__ == "__main__":
-    main()

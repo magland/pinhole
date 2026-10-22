@@ -1,7 +1,3 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = ["httpx"]
-# ///
 """Upload a run directory (runs/<id>/) to the pinhole web app."""
 
 import argparse
@@ -11,15 +7,14 @@ from pathlib import Path
 
 import httpx
 
-ROOT = Path(__file__).parent
 DEFAULT_URL = "https://pinhole.jeremy-magland.workers.dev"
 
 
 def env_value(name: str) -> str | None:
-    """Read a setting from the environment, falling back to .env next to this script."""
+    """Read a setting from the environment, falling back to .env in the current directory."""
     if v := os.environ.get(name):
         return v
-    env = ROOT / ".env"
+    env = Path.cwd() / ".env"
     if env.exists():
         for line in env.read_text().splitlines():
             if line.startswith(name + "="):
@@ -74,13 +69,10 @@ def upload_run(run_dir: Path, user: str | None = None) -> str:
     return f"{url}/runs/{r.json()['id']}"
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def main(argv: list[str] | None = None):
+    ap = argparse.ArgumentParser(prog="pinhole upload", description="Upload a run directory to the web app.")
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--user", help="user name (default: the user recorded in the run)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     print(f"Uploaded: {upload_run(args.run_dir, args.user)}")
 
-
-if __name__ == "__main__":
-    main()

@@ -1,0 +1,24 @@
+[project]
+name = "pinhole"
+dynamic = ["version"]
+description = "Estimate the complexity of a task by the tokens a memoryless agent must read to accomplish it"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = ["httpx", "tiktoken"]
+
+[project.scripts]
+pinhole = "pinhole.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "pinhole/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pinhole"]
+
+[tool.hatch.build.targets.sdist]
+include = ["pinhole", "README.md", "LICENSE"]

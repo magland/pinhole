@@ -144,7 +144,7 @@ async function showTask(id) {
 			<div class="stat"><div class="label">Runs</div><div class="value">${task.run_count}</div><div class="sub">${task.success_count} self-reported success${task.success_count === 1 ? "" : "es"}</div></div>
 		</div>
 		<h2>Run this task</h2>
-		<p class="muted small">From a clone of the pinhole repo, with Docker running and <code>PINHOLE_PASSCODE</code> in <code>.env</code>. The run uploads here when it finishes. Model calls go through this site on a shared OpenRouter key; to use your own key instead, also set <code>OPENROUTER_API_KEY</code>.</p>
+		<p class="muted small">Needs <a href="https://docs.astral.sh/uv/">uv</a> and Docker. Put <code>PINHOLE_PASSCODE=...</code> in a <code>.env</code> file in the directory you run from (or export it). The first run builds the sandbox image; each run is saved under <code>./runs/</code> and uploaded here when it finishes. Model calls go through this site on a shared OpenRouter key; to use your own key instead, also set <code>OPENROUTER_API_KEY</code>. Code: <a href="https://github.com/magland/pinhole">github.com/magland/pinhole</a>.</p>
 		<p class="muted small" id="models"></p>
 		<label class="inline">Your name <input id="cmd-user" value="${esc(store.get("pinhole-user"))}" placeholder="name"></label>
 		<div class="cmd"><pre id="cmd"></pre><button id="copy" type="button">Copy</button></div>
@@ -154,7 +154,7 @@ async function showTask(id) {
 	const cmd = document.getElementById("cmd");
 	const update = () => {
 		const u = userInput.value.trim();
-		cmd.textContent = `uv run pinhole.py --task-id ${task.id} --user ${u ? shellQuote(u) : "NAME"} --upload`;
+		cmd.textContent = `uvx --from git+https://github.com/magland/pinhole pinhole run --task-id ${task.id} --user ${u ? shellQuote(u) : "NAME"} --upload`;
 	};
 	userInput.addEventListener("input", () => { store.set("pinhole-user", userInput.value.trim()); update(); });
 	update();
