@@ -4,6 +4,12 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2026-10-21",
 	"observability": { "enabled": true },
+	"vars": {
+		// Model calls proxied with the site's OpenRouter key (secret OPENROUTER_API_KEY).
+		"ALLOWED_MODELS": "anthropic/claude-haiku-5.5,anthropic/claude-sonnet-5.5,deepseek/deepseek-v4-flash,google/gemini-3.1-flash-lite",
+		"DAILY_CAP_USD": "5",
+		"MAX_TOKENS": "8000"
+	},
 	"assets": {
 		"directory": "./public",
 		"not_found_handling": "single-page-application",

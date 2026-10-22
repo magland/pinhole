@@ -144,7 +144,8 @@ async function showTask(id) {
 			<div class="stat"><div class="label">Runs</div><div class="value">${task.run_count}</div><div class="sub">${task.success_count} self-reported success${task.success_count === 1 ? "" : "es"}</div></div>
 		</div>
 		<h2>Run this task</h2>
-		<p class="muted small">From a clone of the pinhole repo, with <code>OPENROUTER_API_KEY</code> and <code>PINHOLE_PASSCODE</code> in <code>.env</code> and Docker running. The run uploads here when it finishes. Add <code>--model &lt;openrouter-id&gt;</code> to try another model.</p>
+		<p class="muted small">From a clone of the pinhole repo, with Docker running and <code>PINHOLE_PASSCODE</code> in <code>.env</code>. The run uploads here when it finishes. Model calls go through this site on a shared OpenRouter key; to use your own key instead, also set <code>OPENROUTER_API_KEY</code>.</p>
+		<p class="muted small" id="models"></p>
 		<label class="inline">Your name <input id="cmd-user" value="${esc(store.get("pinhole-user"))}" placeholder="name"></label>
 		<div class="cmd"><pre id="cmd"></pre><button id="copy" type="button">Copy</button></div>
 		<h2>Runs</h2>
@@ -163,6 +164,19 @@ async function showTask(id) {
 		setTimeout(() => { e.target.textContent = "Copy"; }, 1500);
 	});
 	bindRowLinks(app);
+	showModels();
+}
+
+async function showModels() {
+	const el = document.getElementById("models");
+	try {
+		const u = await getJSON("/api/usage");
+		el.innerHTML = `Models on the shared key (choose with <code>--model</code>; default ${esc(u.allowed_models[0])}): ` +
+			u.allowed_models.map((m) => `<code>${esc(m)}</code>`).join(", ") +
+			`. Shared spending today: $${u.spent_today_usd.toFixed(2)} of $${u.daily_cap_usd.toFixed(2)} (resets 00:00 UTC).`;
+	} catch {
+		el.textContent = "";
+	}
 }
 
 const shellQuote = (s) => (/^[\w.@-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);

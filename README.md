@@ -6,14 +6,14 @@ Estimates the complexity of a task by the number of tokens an agent must read to
 
 ```
 docker build -t pinhole-sandbox sandbox
-echo OPENROUTER_API_KEY=... > .env
-echo PINHOLE_PASSCODE=... >> .env   # only needed to upload
+echo PINHOLE_PASSCODE=... > .env         # shared passcode: uploads, and model calls on the site's key
+echo OPENROUTER_API_KEY=... >> .env      # optional: use your own OpenRouter key instead
 ```
 
 ## Run
 
 ```
-uv run pinhole.py (tasks/tinydb-example.md | --task "..." | --task-id N) [--model anthropic/claude-haiku-5.5] [--max-turns 40] [--user NAME --upload]
+uv run pinhole.py (tasks/tinydb-example.md | --task "..." | --task-id N) [--model anthropic/claude-haiku-5.5] [--max-turns 40] [--user NAME --upload] [--llm auto|openrouter|site]
 ```
 
 The run is printed to the console as it goes and written to `runs/<id>/`:
@@ -32,3 +32,5 @@ Success is self-reported by the agent; verification by a stronger model is a sep
 https://pinhole.jeremy-magland.workers.dev lists tasks, each with its runs and the fewest read tokens among self-reported successes. Tasks are created on the site (passcode required); a task's page shows the command to run it (`--task-id N --user NAME --upload`), which fetches the task text from the site. Runs from a task file or `--task` can be uploaded too and appear under All runs as ad hoc. Viewing is public; uploading needs the shared passcode (`PINHOLE_PASSCODE`). Upload with `--upload` on a run, or afterwards with `uv run upload.py runs/<id> --user NAME`.
 
 The app is a Cloudflare Worker with a D1 database, in `web/` (`npm run dev`, `npm run deploy`; schema in `web/migrations/`).
+
+Model calls go to OpenRouter directly when `OPENROUTER_API_KEY` is set, otherwise through the site's `/api/llm` proxy, which uses the site's own key (`--llm` forces either). The proxy needs the passcode and `--user`, forwards only the models in `ALLOWED_MODELS` (`web/wrangler.jsonc`), clamps `max_tokens`, logs each call's cost in D1, and refuses calls once the day's logged spend reaches `DAILY_CAP_USD` (UTC). `GET /api/usage` shows the allowed models, today's spend and spend per user.

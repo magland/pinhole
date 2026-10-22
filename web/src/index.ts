@@ -154,6 +154,73 @@ async function createTask(req: Request, env: Env): Promise<Response> {
 	return json({ id: row!.id }, 201);
 }
 
+// ---------- model proxy ----------
+
+const allowedModels = (env: Env) => String(env.ALLOWED_MODELS).split(",").map((m) => m.trim()).filter(Boolean);
+
+function startOfUtcDay(): string {
+	const d = new Date();
+	return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
+}
+
+async function spentToday(env: Env): Promise<number> {
+	const row = await env.DB.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS total FROM llm_calls WHERE created_at >= ?")
+		.bind(startOfUtcDay()).first<{ total: number }>();
+	return row?.total ?? 0;
+}
+
+// Forwards one chat completion to OpenRouter with the site's key. Allowlisted models only,
+// max_tokens clamped, refused once today's logged spend reaches the cap.
+async function proxyLlm(req: Request, env: Env): Promise<Response> {
+	if (!(await passcodeOk(req, env))) return error("invalid passcode", 401);
+	if (!env.OPENROUTER_API_KEY) return error("the site has no OpenRouter key configured", 503);
+	let body: { user?: unknown; model?: unknown; messages?: unknown; max_tokens?: unknown };
+	try {
+		body = await req.json();
+	} catch {
+		return error("invalid JSON", 400);
+	}
+	const user = String(body.user ?? "").trim();
+	const model = String(body.model ?? "");
+	if (!user) return error("user is required", 400);
+	if (!allowedModels(env).includes(model))
+		return error(`model ${model} is not available through the site; allowed: ${allowedModels(env).join(", ")}`, 403);
+	if (!Array.isArray(body.messages)) return error("messages must be an array", 400);
+	const cap = Number(env.DAILY_CAP_USD);
+	const spent = await spentToday(env);
+	if (spent >= cap) return error(`daily spending cap reached ($${spent.toFixed(2)} of $${cap.toFixed(2)}); resets at 00:00 UTC`, 429);
+	const maxTokens = Math.min(Number(body.max_tokens) || Number(env.MAX_TOKENS), Number(env.MAX_TOKENS));
+
+	const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+		method: "POST",
+		headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}`, "content-type": "application/json" },
+		body: JSON.stringify({ model, messages: body.messages, max_tokens: maxTokens, usage: { include: true } }),
+	});
+	const text = await res.text();
+	let usage: { prompt_tokens?: number; completion_tokens?: number; cost?: number } = {};
+	try {
+		usage = JSON.parse(text).usage ?? {};
+	} catch {}
+	await env.DB.prepare(
+		`INSERT INTO llm_calls (user, model, prompt_tokens, completion_tokens, cost_usd, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	).bind(user, model, usage.prompt_tokens ?? null, usage.completion_tokens ?? null, usage.cost ?? 0, res.status,
+		new Date().toISOString()).run();
+	return new Response(text, { status: res.status, headers: { "content-type": "application/json" } });
+}
+
+async function usageInfo(env: Env): Promise<Response> {
+	const { results } = await env.DB.prepare(
+		`SELECT user, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd FROM llm_calls GROUP BY user ORDER BY cost_usd DESC`,
+	).all();
+	return json({
+		allowed_models: allowedModels(env),
+		daily_cap_usd: Number(env.DAILY_CAP_USD),
+		spent_today_usd: await spentToday(env),
+		by_user: results,
+	});
+}
+
 export default {
 	async fetch(req, env): Promise<Response> {
 		const url = new URL(req.url);
@@ -166,6 +233,8 @@ export default {
 		if (path === "/api/tasks" && req.method === "POST") return createTask(req, env);
 		const mt = path.match(/^\/api\/tasks\/(\d+)$/);
 		if (mt && req.method === "GET") return getTask(Number(mt[1]), env);
+		if (path === "/api/llm" && req.method === "POST") return proxyLlm(req, env);
+		if (path === "/api/usage" && req.method === "GET") return usageInfo(env);
 		return error("not found", 404);
 	},
 } satisfies ExportedHandler<Env>;

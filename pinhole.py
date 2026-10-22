@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 import tiktoken
 
-from upload import env_value, fetch_task, upload_run
+from upload import env_value, fetch_task, site_url, upload_run
 
 ROOT = Path(__file__).parent
 HARNESS_VERSION = "0.1.0"
@@ -127,20 +127,31 @@ def describe_action(a: dict) -> str:
 
 # ---------- model ----------
 
-def load_key() -> str:
-    if k := env_value("OPENROUTER_API_KEY"):
-        return k
-    raise SystemExit("OPENROUTER_API_KEY not set (environment or .env)")
+def model_endpoint(mode: str, user: str | None) -> dict:
+    """Where model calls go: OpenRouter with your own key, or the pinhole site's proxy (shared key, passcode)."""
+    key = env_value("OPENROUTER_API_KEY")
+    if mode == "openrouter" or (mode == "auto" and key):
+        if not key:
+            raise SystemExit("OPENROUTER_API_KEY not set (environment or .env)")
+        return {"via": "openrouter", "url": "https://openrouter.ai/api/v1/chat/completions",
+                "headers": {"Authorization": f"Bearer {key}"}, "extra": {}}
+    passcode = env_value("PINHOLE_PASSCODE")
+    if not passcode:
+        raise SystemExit("set OPENROUTER_API_KEY (your own key) or PINHOLE_PASSCODE (the site's shared key)")
+    if not user:
+        raise SystemExit("--user is required when model calls go through the pinhole site")
+    return {"via": "site", "url": f"{site_url()}/api/llm",
+            "headers": {"Authorization": f"Bearer {passcode}"}, "extra": {"user": user}}
 
 
-def call_model(key: str, model: str, system: str, user: str) -> tuple[str, dict]:
+def call_model(ep: dict, model: str, system: str, user: str) -> tuple[str, dict]:
     r = httpx.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {key}"},
-        json={"model": model, "max_tokens": 8000, "usage": {"include": True},
+        ep["url"], headers=ep["headers"],
+        json={"model": model, "max_tokens": 8000, "usage": {"include": True}, **ep["extra"],
               "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
         timeout=300)
-    r.raise_for_status()
+    if r.status_code != 200:
+        raise SystemExit(f"model call failed ({ep['via']}): HTTP {r.status_code} {r.text[:500]}")
     d = r.json()
     return d["choices"][0]["message"]["content"] or "", d.get("usage", {})
 
@@ -203,6 +214,9 @@ def main():
     ap.add_argument("--max-turns", type=int, default=40)
     ap.add_argument("--user", help="your name, recorded with the run")
     ap.add_argument("--upload", action="store_true", help="upload the run to the web app when done")
+    ap.add_argument("--llm", choices=["auto", "openrouter", "site"], default="auto",
+                    help="model calls: your own OPENROUTER_API_KEY, or the site's shared key via PINHOLE_PASSCODE "
+                         "(auto: your own key if set)")
     args = ap.parse_args()
 
     if args.task_id is not None:
@@ -212,7 +226,7 @@ def main():
         name = "-".join(re.findall(r"[a-z0-9]+", task.lower())[:5])
     else:
         task, name = Path(args.task_file).read_text().strip(), Path(args.task_file).stem
-    key = load_key()
+    endpoint = model_endpoint(args.llm, args.user)
     if args.upload and not args.user:
         raise SystemExit("--upload requires --user")
     run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + name
@@ -235,7 +249,8 @@ def main():
         f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n\n## Task\n\n{task}\n")
     transcript.write(f"## System prompt\n\n{fence(SYSTEM_PROMPT)}\n")
 
-    s = {"run_id": run_id, "task_file": args.task_file, "task_id": args.task_id, "task": task, "model": args.model, "user": args.user,
+    s = {"run_id": run_id, "task_file": args.task_file, "task_id": args.task_id, "task": task, "model": args.model,
+         "user": args.user, "llm_via": endpoint["via"],
          "harness_version": HARNESS_VERSION, "system_prompt": SYSTEM_PROMPT,
          "overhead_tokens": ntok(SYSTEM_PROMPT) + ntok(task),
          "turns": 0, "notes_tokens_total": 0, "notes_tokens_max": 0,
@@ -258,7 +273,7 @@ def main():
                 f"(cumulative {read_so_far})\n")
 
             t0 = time.time()
-            text, usage = call_model(key, args.model, SYSTEM_PROMPT, user)
+            text, usage = call_model(endpoint, args.model, SYSTEM_PROMPT, user)
             out(f"_model: {time.time() - t0:.1f} s, {ntok(text)} output tokens_\n")
             s["turns"] = turn
             s["notes_tokens_total"] += notes_tok
