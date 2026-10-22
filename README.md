@@ -12,7 +12,7 @@ echo OPENROUTER_API_KEY=... > .env
 ## Run
 
 ```
-uv run pinhole.py tasks/tinydb-example.md [--model anthropic/claude-haiku-5.5] [--max-turns 40]
+uv run pinhole.py (tasks/tinydb-example.md | --task "...") [--model anthropic/claude-haiku-5.5] [--max-turns 40]
 ```
 
 The run is printed to the console as it goes and written to `runs/<id>/`:

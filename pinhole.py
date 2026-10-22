@@ -198,14 +198,17 @@ def format_summary(s: dict) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("task_file")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("task_file", nargs="?", help="markdown file with the task")
+    src.add_argument("--task", help="task text given directly")
     ap.add_argument("--model", default="anthropic/claude-haiku-5.5")
     ap.add_argument("--max-turns", type=int, default=40)
     args = ap.parse_args()
 
-    task = Path(args.task_file).read_text().strip()
+    task = (args.task if args.task is not None else Path(args.task_file).read_text()).strip()
+    name = Path(args.task_file).stem if args.task_file else "-".join(re.findall(r"[a-z0-9]+", task.lower())[:5])
     key = load_key()
-    run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + Path(args.task_file).stem
+    run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + name
     run_dir = ROOT / "runs" / run_id
     run_dir.mkdir(parents=True)
     log = open(run_dir / "events.jsonl", "w")
@@ -221,11 +224,11 @@ def main():
         transcript.flush()
         print(text, flush=True)
 
-    out(f"# pinhole run {run_id}\n\n- Model: {args.model}\n- Task file: {args.task_file}\n- Started: "
+    out(f"# pinhole run {run_id}\n\n- Model: {args.model}\n- Task file: {args.task_file or '(given on command line)'}\n- Started: "
         f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n\n## Task\n\n{task}\n")
     transcript.write(f"## System prompt\n\n{fence(SYSTEM_PROMPT)}\n")
 
-    s = {"run_id": run_id, "task_file": args.task_file, "model": args.model,
+    s = {"run_id": run_id, "task_file": args.task_file, "task": task, "model": args.model,
          "overhead_tokens": ntok(SYSTEM_PROMPT) + ntok(task),
          "turns": 0, "notes_tokens_total": 0, "notes_tokens_max": 0,
          "result_tokens_total": 0, "result_tokens_max": 0,
