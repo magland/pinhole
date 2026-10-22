@@ -158,6 +158,42 @@ def parse_response(text: str) -> dict:
     return d
 
 
+# ---------- transcript ----------
+
+def fence(text: str, lang: str = "") -> str:
+    """Code block whose fence is longer than any backtick run in the text."""
+    n = max([3] + [len(m) + 1 for m in re.findall(r"`{3,}", text)])
+    return f"{'`' * n}{lang}\n{text.rstrip(chr(10))}\n{'`' * n}\n"
+
+
+def format_action(a: dict) -> str:
+    t = a.get("type")
+    if t == "run":
+        return f"### Action: run\n{fence(str(a.get('cmd')), 'bash')}"
+    if t == "write_file":
+        return f"### Action: write_file `{a.get('path')}`\n{fence(str(a.get('content')))}"
+    if t == "edit_file":
+        return (f"### Action: edit_file `{a.get('path')}`\nold:\n{fence(str(a.get('old')))}"
+                f"new:\n{fence(str(a.get('new')))}")
+    if t == "finish":
+        return f"### Action: finish (success: {a.get('success')})\n{a.get('reason')}\n"
+    return f"### Action (unrecognized)\n{fence(json.dumps(a, indent=2), 'json')}"
+
+
+def format_summary(s: dict) -> str:
+    rows = [("Outcome", "finished, self-reported success" if s["self_reported_success"]
+             else "finished, self-reported failure" if s["finished"] else "did not finish"),
+            ("Turns", s["turns"]),
+            ("Read tokens total", s["read_tokens_total"]),
+            ("Notes tokens (total / max)", f"{s['notes_tokens_total']} / {s['notes_tokens_max']}"),
+            ("Result tokens (total / max)", f"{s['result_tokens_total']} / {s['result_tokens_max']}"),
+            ("Overhead tokens (system prompt + task, once)", s["overhead_tokens"]),
+            ("Model output tokens", s["model_output_tokens"]),
+            ("Parse errors", s["parse_errors"]),
+            ("Cost", f"${s['cost_usd']:.4f}")]
+    return "## Summary\n\n" + "\n".join(f"- {k}: {v}" for k, v in rows) + "\n"
+
+
 # ---------- main loop ----------
 
 def main():
@@ -173,10 +209,21 @@ def main():
     run_dir = ROOT / "runs" / run_id
     run_dir.mkdir(parents=True)
     log = open(run_dir / "events.jsonl", "w")
+    transcript = open(run_dir / "transcript.md", "w")
 
     def emit(ev: dict):
         log.write(json.dumps(ev) + "\n")
         log.flush()
+
+    def out(text: str):
+        """Append to transcript.md and echo to the console."""
+        transcript.write(text + "\n")
+        transcript.flush()
+        print(text, flush=True)
+
+    out(f"# pinhole run {run_id}\n\n- Model: {args.model}\n- Task file: {args.task_file}\n- Started: "
+        f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n\n## Task\n\n{task}\n")
+    transcript.write(f"## System prompt\n\n{fence(SYSTEM_PROMPT)}\n")
 
     s = {"run_id": run_id, "task_file": args.task_file, "model": args.model,
          "overhead_tokens": ntok(SYSTEM_PROMPT) + ntok(task),
@@ -195,8 +242,13 @@ def main():
                 user += f"\n# Last action\n{last[0]}\n\n# Result\n{last[1]}\n"
             notes_tok = ntok(notes)
             result_tok = ntok(last[0]) + ntok(last[1]) if last else 0
+            read_so_far = s["notes_tokens_total"] + s["result_tokens_total"] + notes_tok + result_tok
+            out(f"---\n\n## Turn {turn}\n\nRead this turn: notes {notes_tok} + result {result_tok} tokens "
+                f"(cumulative {read_so_far})\n")
 
+            t0 = time.time()
             text, usage = call_model(key, args.model, SYSTEM_PROMPT, user)
+            out(f"_model: {time.time() - t0:.1f} s, {ntok(text)} output tokens_\n")
             s["turns"] = turn
             s["notes_tokens_total"] += notes_tok
             s["notes_tokens_max"] = max(s["notes_tokens_max"], notes_tok)
@@ -215,15 +267,16 @@ def main():
                 s["parse_errors"] += 1
                 last = ("(none: response could not be parsed)", f"error: {e}. Respond with a single JSON object.")
                 emit({**ev, "parse_error": str(e)})
-                print(f"[{turn}] parse error: {e}")
+                out(f"### Parse error: {e}\n\nRaw response:\n{fence(text)}")
                 continue
 
             notes, a = d["notes"], d["action"]
+            out(f"### Notes (written this turn)\n\n{fence(notes)}")
+            out(format_action(a))
             if a.get("type") == "finish":
                 s.update(finished=True, self_reported_success=bool(a.get("success")),
                          self_report_reason=a.get("reason"))
                 emit({**ev, "notes": notes, "action": a})
-                print(f"[{turn}] finish success={a.get('success')}: {a.get('reason')}")
                 break
             try:
                 full, shown = do_action(sb, a)
@@ -231,14 +284,19 @@ def main():
                 full = shown = f"error: malformed action ({e})"
             last = (describe_action(a), shown)
             emit({**ev, "notes": notes, "action": a, "result_full": full, "result_shown": shown})
-            print(f"[{turn}] {describe_action(a)[:100]}  -> {ntok(shown)} tok")
+            trunc = f", truncated: full result {len(full)} chars in events.jsonl" if shown != full else ""
+            out(f"### Result ({ntok(shown)} tokens{trunc})\n{fence(shown)}")
+        else:
+            out(f"---\n\nStopped: reached max turns ({args.max_turns}).\n")
     finally:
         s["read_tokens_total"] = s["notes_tokens_total"] + s["result_tokens_total"]
         sb.save_work(run_dir / "work.tar")
         sb.remove()
         (run_dir / "summary.json").write_text(json.dumps(s, indent=2) + "\n")
+        out("---\n\n" + format_summary(s))
         log.close()
-    print(json.dumps(s, indent=2))
+        transcript.close()
+    print(f"Run directory: {run_dir}")
 
 
 if __name__ == "__main__":
